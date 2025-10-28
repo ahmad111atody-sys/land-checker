@@ -2,34 +2,40 @@ import TelegramBot from "node-telegram-bot-api";
 import express from "express";
 import axios from "axios";
 
-// إعداداتك الخاصة
-const token = "8497253482:AAH8z9Ib6x5K3oUllKXbejWDUNsBBu9Foco";
-const CHAT_ID = "1244229957";
+// 🔐 بياناتك الخاصة
+const token = "8497253482:AAH8z9Ib6x5K3oUllKXbejWDUNsBBu9Foco"; // توكن البوت
+const CHAT_ID = "1244229957"; // معرفك في التليجرام
 
+// ⚙️ إعداد البوت والخادم
 const bot = new TelegramBot(token, { polling: true });
 const app = express();
 
-// تأكيد أن البوت شغال
-app.get("/", (req, res) => res.send("✅ Bot is running and checking Sakani projects..."));
+app.get("/", (req, res) => {
+  res.send("✅ Bot is running and watching Sakani projects...");
+});
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+// ✅ اختبار البوت
+bot.onText(/\/start/, (msg) => {
+  bot.sendMessage(msg.chat.id, "مرحباً 👋 البوت يعمل الآن بنجاح!");
+});
 
-// قائمة المخططات (أضف كل أرقام المشاريع هنا)
-const projects = [146, 229, 203]; // ← تقدر تضيف باقي المخططات هنا
+bot.onText(/ping/, (msg) => {
+  bot.sendMessage(msg.chat.id, "🏓 Pong! البوت متصل ويعمل تمام ✅");
+});
 
-async function checkProjects() {
+// 🕓 هنا نضيف فحص المشاريع كل 30 ثانية (لاحقاً نفعّلها)
+async function checkSakaniProjects() {
   try {
-    for (const id of projects) {
-      const res = await axios.get(`https://sakani.sa/app/land-projects/${id}`);
-      if (res.status === 200) {
-        console.log(`✅ المشروع ${id} متاح`);
-      }
-    }
-  } catch (err) {
-    console.error("خطأ أثناء الفحص:", err.message);
+    const res = await axios.get("https://sakani.sa/app/land-projects/146");
+    // هنا لاحقاً بنضيف استخراج الأراضي وإرسال التنبيه
+    console.log("Checked Sakani projects at", new Date().toLocaleTimeString());
+  } catch (error) {
+    console.error("خطأ أثناء الفحص:", error.message);
   }
 }
 
 // فحص كل 30 ثانية
-setInterval(checkProjects, 30000);
+setInterval(checkSakaniProjects, 30000);
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`✅ Server running on port ${PORT}`));
