@@ -1,0 +1,122 @@
+#!/usr/bin/env python3
+# 🔍 بوت مراقبة مشاريع سكني (البستان - نخلان - درة شرورة - سحبان)
+# إعداد: خاص بمشروع land-checker على Render
+
+import os, time, json, requests, re
+from datetime import datetime
+
+# إعدادات البوت من بيئة Render
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "").strip()
+CHAT_ID = os.getenv("CHAT_ID", "").strip()
+CHECK_INTERVAL_MIN = int(os.getenv("CHECK_INTERVAL_MIN", "10"))  # كل 10 دقائق
+
+# ملفات المشاريع
+PROJECT_FILES = {
+    "واحة البستان – صبيا": "alanwar.txt",
+    "نخلان": "active_units.txt",
+    "درة شرورة": "shrora.txt",
+    "سحبان": "sahban.txt"
+}
+
+STATE_FILE = "seen_units.json"
+
+# إرسال رسالة لتليجرام
+def send_message(text: str):
+    if not TELEGRAM_TOKEN or not CHAT_ID:
+        print("⚠️ لم يتم ضبط TELEGRAM_TOKEN أو CHAT_ID في الإعدادات")
+        return
+    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+    data = {"chat_id": CHAT_ID, "text": text, "parse_mode": "HTML"}
+    try:
+        r = requests.post(url, data=data, timeout=15)
+        print("📨 تم الإرسال:", r.status_code)
+    except Exception as e:
+        print("❌ خطأ أثناء الإرسال:", e)
+
+# تحميل الحالات السابقة
+def load_seen():
+    if os.path.exists(STATE_FILE):
+        try:
+            with open(STATE_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except:
+            pass
+    return {}
+
+# حفظ الحالات الجديدة
+def save_seen(data):
+    with open(STATE_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+# استخراج الحالة من الصفحة
+def extract_status(html):
+    t = html.lower()
+    if "ملغ" in t or "cancel" in t:
+        return "ملغاة"
+    if "متاح" in t or "available" in t:
+        return "متاحة"
+    if "محجوز" in t or "reserved" in t:
+        return "محجوزة"
+    return "غير معروف"
+
+# فحص قطعة واحدة
+def check_unit(url):
+    try:
+        r = requests.get(url, timeout=20)
+        if r.status_code != 200:
+            return "غير متاح"
+        return extract_status(r.text)
+    except Exception as e:
+        print("❌", url, e)
+        return "خطأ"
+
+# فحص جميع المشاريع
+def check_all():
+    seen = load_seen()
+    updates = {}
+
+    for proj_name, fname in PROJECT_FILES.items():
+        if not os.path.exists(fname):
+            print(f"⚠️ الملف {fname} غير موجود")
+            continue
+
+        updates[proj_name] = []
+
+        with open(fname, "r", encoding="utf-8") as f:
+            for line in f:
+                url = line.strip()
+                if not url:
+                    continue
+
+                st = check_unit(url)
+                old = seen.get(url)
+
+                if old != st:
+                    seen[url] = st
+                    if st in ("ملغاة", "متاحة"):
+                        updates[proj_name].append((url, st))
+
+    save_seen(seen)
+
+    # إرسال التنبيهات
+    for proj_name, lst in updates.items():
+        if not lst:
+            continue
+
+        msg = f"🔔 <b>تم اكتشاف قطعة جديدة في مشروع {proj_name}</b>\n🕒 {datetime.now():%Y-%m-%d %H:%M}\n\n"
+        for i, (u, s) in enumerate(lst, 1):
+            pid = re.search(r"/units/(\d+)", u)
+            num = pid.group(1) if pid else "غير معروف"
+            msg += f"{i}) قطعة رقم <b>{num}</b> – الحالة: {s}\n🔗 {u}\n\n"
+        send_message(msg)
+
+# التشغيل الرئيسي
+def main():
+    print("✅ تم تشغيل بوت مراقبة مشاريع سكني")
+    print("سيتم الفحص كل", CHECK_INTERVAL_MIN, "دقيقة")
+    while True:
+        check_all()
+        time.sleep(CHECK_INTERVAL_MIN * 60)
+
+if __name__ == "__main__":
+    main()
