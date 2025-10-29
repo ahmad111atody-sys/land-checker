@@ -1,61 +1,52 @@
 from flask import Flask, request, jsonify
 import requests
-import json
+from bs4 import BeautifulSoup
+import os
 
 app = Flask(__name__)
 
-SCRAPER_API_KEY = "ضع_مفتاحك_هنا"  # ← هنا ضع مفتاح ScraperAPI الخاص بك
+SCRAPER_API_KEY = "b1cf9fea0ea7c6f530598b1bb88a5776"
 
 @app.route('/')
 def home():
     return jsonify({
-        "status": "running ✅",
-        "usage": "أضف ?project=رقم_المخطط إلى الرابط مثل: /check_land?project=146"
+        "status": "running",
+        "message": "Land checker is online ✅"
     })
 
-@app.route('/check_land')
+@app.route('/check_land', methods=['GET'])
 def check_land():
-    project_id = request.args.get('project')
-
-    if not project_id:
-        return jsonify({"error": "يرجى إدخال رقم المشروع مثل: /check_land?project=146"}), 400
-
     try:
-        # رابط مشروع سكني
-        target_url = f"https://sakani.sa/app/land-projects/{project_id}"
+        url = request.args.get("url")
+        if not url:
+            return jsonify({"error": "missing_url"}), 400
 
-        # عبر ScraperAPI
-        api_url = f"http://api.scraperapi.com?api_key={SCRAPER_API_KEY}&url={target_url}"
-        response = requests.get(api_url, timeout=20)
+        # نستخدم ScraperAPI لتفادي حجب سكني
+        api_url = f"http://api.scraperapi.com/?api_key={SCRAPER_API_KEY}&url={url}"
+        response = requests.get(api_url, timeout=30)
 
         if response.status_code != 200:
-            return jsonify({"error": f"فشل في جلب الصفحة، الكود: {response.status_code}"}), 500
+            return jsonify({
+                "error": f"fetch_failed: {response.status_code} for {url}"
+            }), 403
 
-        html = response.text
+        soup = BeautifulSoup(response.text, "html.parser")
+        title_tag = soup.find("title")
+        title = title_tag.text.strip() if title_tag else "غير معروف"
 
-        # استخراج عنوان المشروع من HTML
-        start = html.find("<title>") + 7
-        end = html.find("</title>")
-        title = html[start:end].strip() if start > 0 and end > 0 else "لم يتم العثور على العنوان"
-
-        result = {
+        project_id = url.split("/")[-1]
+        return jsonify({
             "project": project_id,
             "status": "success",
             "title": title
-        }
+        })
 
-        return app.response_class(
-            response=json.dumps(result, ensure_ascii=False),
-            status=200,
-            mimetype='application/json'
-        )
-
-    except requests.exceptions.Timeout:
-        return jsonify({"error": "انتهت مهلة الاتصال (Timeout)."}), 504
-
+    except requests.Timeout:
+        return jsonify({"error": "fetch_failed: connection timed out"}), 504
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": f"fetch_failed: {str(e)}"}), 500
 
 
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=10000)
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
