@@ -1,17 +1,15 @@
 #!/usr/bin/env python3
-# combined_sakani_checker.py
-# 🔹 فحص مخططات سكني (البستان + النخلان + النشطة)
+# Land Checker (Alobstan + Nakhlan)
+# يعرض القطع الملغاة فقط مع روابطها
 
 from flask import Flask, jsonify, request
-import requests
 from bs4 import BeautifulSoup
-import os
+import requests, os
 
-# إعداد Flask
 app = Flask(__name__)
-app.config['JSON_AS_ASCII'] = False  # عرض النصوص العربية بدون ترميز
+app.config['JSON_AS_ASCII'] = False
 
-# مفتاح ScraperAPI (إذا عندك)
+# مفتاح ScraperAPI (تقدر تعدله)
 SCRAPER_API_KEY = os.getenv("SCRAPER_API_KEY", "YOUR_SCRAPER_API_KEY")
 
 # روابط مخطط البستان
@@ -24,8 +22,8 @@ alobstan_links = [
     "https://sakani.sa/app/units/765515",
     "https://sakani.sa/app/units/765448",
     "https://sakani.sa/app/units/765595",
-    "https://sakani.sa/app/units/765577",
-    "https://sakani.sa/app/units/765205"
+    "https://sakani.sa/app/units/765598",
+    "https://sakani.sa/app/units/765205",
 ]
 
 # روابط مخطط نخلان
@@ -34,27 +32,20 @@ nakhlan_links = [
     "https://sakani.sa/app/units/797400",
     "https://sakani.sa/app/units/797412",
     "https://sakani.sa/app/units/797420",
-    "https://sakani.sa/app/units/797431",
-    "https://sakani.sa/app/units/797440",
-    "https://sakani.sa/app/units/797456",
-    "https://sakani.sa/app/units/797468"
+    "https://sakani.sa/app/units/797436",
+    "https://sakani.sa/app/units/797460",
+    "https://sakani.sa/app/units/797473",
+    "https://sakani.sa/app/units/797482",
+    "https://sakani.sa/app/units/797490",
+    "https://sakani.sa/app/units/797498",
 ]
 
-# روابط القطع النشطة من active_units.txt
-active_units_links = [
-    # أضف روابطك هنا لاحقاً لو عندك ملف active_units
-]
-
-
-# دالة الفحص الرئيسية
-def fetch_land(url, timeout=30):
+# ---- دالة الفحص ----
+def fetch_land(url, timeout=25):
     try:
         api_key = SCRAPER_API_KEY
-        if api_key and api_key != "YOUR_SCRAPER_API_KEY":
-            api_url = f"http://api.scraperapi.com/?api_key={api_key}&url={url}"
-            resp = requests.get(api_url, timeout=timeout)
-        else:
-            resp = requests.get(url, timeout=timeout)
+        api_url = f"http://api.scraperapi.com/?api_key={api_key}&url={url}"
+        resp = requests.get(api_url, timeout=timeout)
 
         if resp.status_code != 200:
             return {"error": "fetch_failed", "status_code": resp.status_code, "url": url}
@@ -63,58 +54,68 @@ def fetch_land(url, timeout=30):
         title_tag = soup.find("title")
         title = title_tag.text.strip() if title_tag else "غير معروف"
 
-        project_id = url.split("/")[-1]
-        return {"project": project_id, "status": "success", "title": title, "url": url}
+        return {"url": url, "title": title, "status": "success"}
 
-    except requests.Timeout:
-        return {"error": "timeout", "url": url}
     except Exception as e:
         return {"error": str(e), "url": url}
 
+
+# ---- المسارات ----
 
 @app.route("/")
 def home():
     return jsonify({"status": "running", "message": "Land checker is online ✅"})
 
 
-# ✅ فحص البستان فقط
-@app.route("/check_alobstan", methods=["GET"])
-def check_alobstan():
-    results = []
-    for u in alobstan_links:
-        results.append(fetch_land(u))
-    return jsonify(results)
-
-
-# ✅ فحص نخلان فقط
-@app.route("/check_nakhlan", methods=["GET"])
-def check_nakhlan():
-    results = []
-    for u in nakhlan_links:
-        results.append(fetch_land(u))
-    return jsonify(results)
-
-
-# ✅ فحص القطع النشطة فقط
-@app.route("/check_active", methods=["GET"])
-def check_active():
-    results = []
-    for u in active_units_links:
-        results.append(fetch_land(u))
-    return jsonify(results)
-
-
-# ✅ فحص شامل (البستان + نخلان + النشطة)
 @app.route("/check_all", methods=["GET"])
 def check_all():
-    results = {"alobstan": [], "nakhlan": [], "active_units": []}
+    cancelled = []
+    total = 0
+
+    for u in alobstan_links + nakhlan_links:
+        res = fetch_land(u)
+        total += 1
+        if "error" in res or res.get("status_code") == 404:
+            cancelled.append(u)
+
+    return jsonify({
+        "cancelled_units": cancelled,
+        "total_checked": total
+    })
+
+
+@app.route("/check_alobstan", methods=["GET"])
+def check_alobstan():
+    cancelled = []
+    total = 0
+
     for u in alobstan_links:
-        results["alobstan"].append(fetch_land(u))
+        res = fetch_land(u)
+        total += 1
+        if "error" in res or res.get("status_code") == 404:
+            cancelled.append(u)
+
+    return jsonify({
+        "cancelled_units": cancelled,
+        "total_checked": total
+    })
+
+
+@app.route("/check_nakhlan", methods=["GET"])
+def check_nakhlan():
+    cancelled = []
+    total = 0
+
     for u in nakhlan_links:
-        results["nakhlan"].append(fetch_land(u))
-    for u in active_units_links:
-        results["active_units"].append(fetch_land(u))
-    return jsonify(results)
+        res = fetch_land(u)
+        total += 1
+        if "error" in res or res.get("status_code") == 404:
+            cancelled.append(u)
+
+    return jsonify({
+        "cancelled_units": cancelled,
+        "total_checked": total
+    })
 
 
 if __name__ == "__main__":
