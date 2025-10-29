@@ -8,11 +8,10 @@ app = Flask(__name__)
 def home():
     return "Sakani Land Checker is running ✅"
 
-@app.route('/check_land')
-def check_land():
-    url = request.args.get('url')
-    if not url:
-        return jsonify({"error": "No Sakani URL provided"}), 400
+headers = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36"
+}
+response = requests.get(url, headers=headers)
 
     try:
         response = requests.get(url)
