@@ -1,47 +1,60 @@
 from flask import Flask, request, jsonify
 import requests
-from bs4 import BeautifulSoup
-import os
+import json
 
 app = Flask(__name__)
 
-# مفتاح ScraperAPI (من حسابك)
-SCRAPER_API_KEY = os.getenv("SCRAPER_API_KEY", "b1cf9fea0ea7c6f530598b1bb88a5776")
+SCRAPER_API_KEY = "ضع_مفتاحك_هنا"  # ← هنا ضع مفتاح ScraperAPI الخاص بك
 
 @app.route('/')
 def home():
-    return "✅ Land Checker is running..."
+    return jsonify({
+        "status": "running ✅",
+        "usage": "أضف ?project=رقم_المخطط إلى الرابط مثل: /check_land?project=146"
+    })
 
 @app.route('/check_land')
 def check_land():
-    project = request.args.get('project')
-    if not project:
-        return jsonify({"error": "missing_project_number"}), 400
+    project_id = request.args.get('project')
 
-    url = f"https://sakani.sa/app/land-projects/{project}"
-    proxy_url = f"http://api.scraperapi.com/?api_key={SCRAPER_API_KEY}&render=true&url={url}"
+    if not project_id:
+        return jsonify({"error": "يرجى إدخال رقم المشروع مثل: /check_land?project=146"}), 400
 
     try:
-        res = requests.get(proxy_url, timeout=60)
-        res.raise_for_status()
-    except Exception as e:
-        return jsonify({"error": f"fetch_failed: {e}"}), 500
+        # رابط مشروع سكني
+        target_url = f"https://sakani.sa/app/land-projects/{project_id}"
 
-    try:
-        soup = BeautifulSoup(res.text, "html.parser")
+        # عبر ScraperAPI
+        api_url = f"http://api.scraperapi.com?api_key={SCRAPER_API_KEY}&url={target_url}"
+        response = requests.get(api_url, timeout=20)
 
-        # مثال بسيط لاستخراج عنوان المشروع من الصفحة
-        title = soup.find("title").get_text(strip=True) if soup.find("title") else "No title found"
+        if response.status_code != 200:
+            return jsonify({"error": f"فشل في جلب الصفحة، الكود: {response.status_code}"}), 500
 
-        # يقدر هنا تضيف منطق لفحص القطع أو البحث عن "محجوز" أو "متاح"
-        return jsonify({
-            "project": project,
+        html = response.text
+
+        # استخراج عنوان المشروع من HTML
+        start = html.find("<title>") + 7
+        end = html.find("</title>")
+        title = html[start:end].strip() if start > 0 and end > 0 else "لم يتم العثور على العنوان"
+
+        result = {
+            "project": project_id,
             "status": "success",
             "title": title
-        })
+        }
+
+        return app.response_class(
+            response=json.dumps(result, ensure_ascii=False),
+            status=200,
+            mimetype='application/json'
+        )
+
+    except requests.exceptions.Timeout:
+        return jsonify({"error": "انتهت مهلة الاتصال (Timeout)."}), 504
 
     except Exception as e:
-        return jsonify({"error": f"parse_failed: {e}"}), 500
+        return jsonify({"error": str(e)}), 500
 
 
 if __name__ == '__main__':
