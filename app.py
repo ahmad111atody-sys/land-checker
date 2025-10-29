@@ -1,35 +1,47 @@
-from flask import Flask, request
-import os
+from flask import Flask, request, jsonify
 import requests
+from bs4 import BeautifulSoup
 
 app = Flask(__name__)
 
-SCRAPER_KEY = os.environ.get("SCRAPER_API_KEY")  # ضع المفتاح في متغير البيئة داخل Render
+@app.route("/")
+def home():
+    return "✅ Land checker is running. Use /check_land?project=146"
 
 @app.route("/check_land")
 def check_land():
-    url = request.args.get("url")
-    if not url:
-        return {"error": "missing url param"}, 400
+    project = request.args.get("project")
+    if not project:
+        return jsonify({"error": "missing ?project=ID"}), 400
 
-    # استخدام ScraperAPI لتجاوز الحظر
-    api_url = f"http://api.scraperapi.com?api_key={SCRAPER_KEY}&url={url}&render=true"
-
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-    }
+    url = f"https://sakani.sa/app/land-projects/{project}"
 
     try:
-        resp = requests.get(api_url, headers=headers, timeout=30)
-        resp.raise_for_status()
-        return resp.text
+        r = requests.get(url, timeout=30, headers={
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+        })
+        r.raise_for_status()
     except Exception as e:
-        return {"error": str(e)}, 500
+        return jsonify({"error": f"fetch_failed: {str(e)}"}), 500
 
-@app.route("/")
-def home():
-    return "Land Checker is running!"
+    soup = BeautifulSoup(r.text, "html.parser")
+
+    # نبحث عن روابط القطع
+    links = []
+    for a in soup.find_all("a", href=True):
+        href = a["href"]
+        if "/app/units/" in href:
+            if href.startswith("http"):
+                links.append(href)
+            else:
+                links.append("https://sakani.sa" + href)
+
+    links = list(set(links))  # إزالة التكرار
+    return jsonify({
+        "project": project,
+        "units_found": len(links),
+        "links": links
+    })
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host="0.0.0.0", port=port)
+    app.run(host="0.0.0.0", port=10000)
