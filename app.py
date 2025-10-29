@@ -1,5 +1,6 @@
 from flask import Flask, request, jsonify
 import requests
+SCRAPER_API_KEY = "b1cf9fea0ea7c6f530598b1bb88a5776"
 from bs4 import BeautifulSoup
 
 app = Flask(__name__)
