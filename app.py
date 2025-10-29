@@ -4,6 +4,7 @@ from bs4 import BeautifulSoup
 import os
 
 app = Flask(__name__)
+app.config['JSON_AS_ASCII'] = False  # عرض النصوص العربية بدون ترميز
 
 SCRAPER_API_KEY = "b1cf9fea0ea7c6f530598b1bb88a5776"
 
@@ -19,7 +20,6 @@ albostan_links = [
     "https://sakani.sa/app/units/765595",
     "https://sakani.sa/app/units/765598",
     "https://sakani.sa/app/units/765577",
-    # ... (باقي الروابط تقدر تضيفها كلها بنفس النمط)
     "https://sakani.sa/app/units/765205"
 ]
 
@@ -71,6 +71,14 @@ def check_all():
         try:
             api_url = f"http://api.scraperapi.com/?api_key={SCRAPER_API_KEY}&url={url}"
             response = requests.get(api_url, timeout=20)
+            if response.status_code != 200:
+                results.append({
+                    "url": url,
+                    "status": "fetch_failed",
+                    "code": response.status_code
+                })
+                continue
+
             soup = BeautifulSoup(response.text, "html.parser")
             title_tag = soup.find("title")
             title = title_tag.text.strip() if title_tag else "غير معروف"
@@ -86,6 +94,7 @@ def check_all():
                 "url": url,
                 "error": f"fetch_failed: {str(e)}"
             })
+
     return jsonify(results)
 
 
