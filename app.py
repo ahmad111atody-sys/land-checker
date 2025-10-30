@@ -1,46 +1,80 @@
-import requests
+import os
 import time
+import requests
+from bs4 import BeautifulSoup
 
-# إعدادات التوكن ومعرّف الشات
+# Telegram bot
 BOT_TOKEN = "8497253482:AAHWWYNrUJRotdwCe0xKZ50-dvgHiwoKgeg"
-CHAT_ID = "1244229957"
+CHAT_ID = "YOUR_CHAT_ID"  # استبدلها بعد شوي بـ chat_id الخاص فيك
 
-# روابط المشاريع في سكني
-PROJECTS = {
-    "واحة البستان": "https://sakani.sa/app/land-projects/146",
-    "نخلان": "https://sakani.sa/app/land-projects/602"
-}
+# روابط مخطط واحة البستان
+alobstan_links = [
+    "https://sakani.sa/app/units/765316",
+    "https://sakani.sa/app/units/765453",
+    "https://sakani.sa/app/units/765499",
+    "https://sakani.sa/app/units/765587",
+    "https://sakani.sa/app/units/765778",
+    "https://sakani.sa/app/units/765515",
+    "https://sakani.sa/app/units/765648",
+    "https://sakani.sa/app/units/765595",
+    "https://sakani.sa/app/units/765598",
+    "https://sakani.sa/app/units/765205"
+]
 
-# دالة لإرسال رسالة في تيليجرام
-def send_telegram_message(text):
-    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-    payload = {"chat_id": CHAT_ID, "text": text}
+# روابط مخطط نخلان
+nakhlan_links = [
+    "https://sakani.sa/app/units/797389",
+    "https://sakani.sa/app/units/797400",
+    "https://sakani.sa/app/units/797412",
+    "https://sakani.sa/app/units/797436",
+    "https://sakani.sa/app/units/797460",
+    "https://sakani.sa/app/units/797473",
+    "https://sakani.sa/app/units/797482",
+    "https://sakani.sa/app/units/797490",
+    "https://sakani.sa/app/units/797498"
+]
+
+# دالة فحص القطعة
+def check_unit(url):
     try:
-        requests.post(url, json=payload)
+        resp = requests.get(url, timeout=20)
+        if resp.status_code != 200:
+            return None
+
+        soup = BeautifulSoup(resp.text, "html.parser")
+        if "ملغاة" in resp.text or "cancel" in resp.text.lower():
+            return None
+
+        # اذا فيه شيء ظاهر يدل انها متاحة
+        if "احجز الآن" in resp.text or "متاحة" in resp.text:
+            return url
+    except Exception:
+        return None
+
+# دالة إرسال رسالة لتليجرام
+def send_telegram(msg):
+    try:
+        requests.get(
+            f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
+            params={"chat_id": CHAT_ID, "text": msg}
+        )
     except Exception as e:
-        print("خطأ في إرسال الرسالة:", e)
+        print("Telegram error:", e)
 
-# دالة لفحص توفر القطع
-def check_projects():
-    for name, link in PROJECTS.items():
-        try:
-            res = requests.get(link, timeout=15)
-            if res.status_code != 200:
-                print(f"❌ خطأ أثناء الفحص {name}: {res.status_code}")
-                continue
+# حلقة الفحص
+def main():
+    all_links = alobstan_links + nakhlan_links
+    sent_links = set()
 
-            if "ملغاة" in res.text or "cancel" in res.text.lower():
-                send_telegram_message(f"⚠️ قطعة ملغاة ظهرت في مشروع {name}\n🔗 {link}")
-                print(f"تنبيه: قطعة ملغاة في {name}")
-            else:
-                print(f"✅ لا يوجد تغييرات في {name}")
+    while True:
+        for link in all_links:
+            if link not in sent_links:
+                result = check_unit(link)
+                if result:
+                    send_telegram(f"✅ قطعة متاحة: {result}")
+                    sent_links.add(link)
+                    print("تم الإرسال:", result)
+        time.sleep(30)
 
-        except Exception as e:
-            print(f"⚠️ خطأ أثناء الفحص {name}: {e}")
-
-# الحلقة التلقائية كل 30 ثانية
-send_telegram_message("✅ بدأ فحص سكني (واحة البستان + نخلان) كل 30 ثانية 🔄")
-
-while True:
-    check_projects()
-    time.sleep(30)
+if __name__ == "__main__":
+    main()
