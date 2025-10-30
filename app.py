@@ -5,7 +5,6 @@ import requests
 
 app = Flask(__name__)
 
-# روابط المخططات
 PROJECTS = {
     "واحة البستان – صبيا": "https://sakani.sa/app/land-projects/146",
     "نخلان": "https://sakani.sa/app/land-projects/602"
@@ -32,7 +31,6 @@ def check_sakani():
         print("⏳ سيتم إعادة الفحص بعد 30 ثانية...\n")
         time.sleep(30)
 
-# تشغيل الفحص في الخلفية
 threading.Thread(target=check_sakani, daemon=True).start()
 
 @app.route('/')
