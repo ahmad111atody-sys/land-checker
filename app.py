@@ -1,38 +1,49 @@
+from flask import Flask, jsonify
 import requests
-import time
 from datetime import datetime
 
-# روابط المشاريع
+app = Flask(__name__)
+
+# --- إعداد روابط المخططات ---
 PROJECTS = {
-    "واحة البستان - صبيا": "https://sakani.sa/app/land-projects/146",
-    "نخلان": "https://sakani.sa/app/land-projects/602"
+    "نخلان": "https://sakani.sa/app/land-projects/602",
+    "واحة البستان - صبيا": "https://sakani.sa/app/land-projects/146"
 }
 
-# سجل الأحداث
-def write_log(msg):
-    with open("logs.txt", "a", encoding="utf-8") as f:
-        f.write(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] {msg}\n")
-
-# فحص المشروع
-def check_sakani():
+def check_land_projects():
+    """يفحص المشاريع ويرجع النتائج"""
+    results = {}
     for name, url in PROJECTS.items():
         try:
-            res = requests.get(url)
-            html = res.text
-
-            if "ملغاة" in html or "cancel" in html.lower():
-                write_log(f"🟥 قطعة ملغاة تم اكتشافها في ({name}) ➜ {url}")
-            elif "متاحة" in html or "available" in html.lower():
-                write_log(f"🟩 قطعة متاحة للحجز في ({name}) ➜ {url}")
+            r = requests.get(url, timeout=10)
+            if "ملغاة" in r.text or "Cancel" in r.text:
+                results[name] = "🚨 فيه قطع ملغاة"
             else:
-                write_log(f"ℹ️ لا يوجد تحديث حالياً في ({name})")
-
+                results[name] = "✅ لا توجد قطع ملغاة حالياً"
         except Exception as e:
-            write_log(f"⚠️ خطأ أثناء فحص ({name}): {e}")
+            results[name] = f"❌ خطأ أثناء الفحص: {e}"
+    return results
 
-# تشغيل الفحص المتكرر
+
+@app.route('/')
+def home():
+    """صفحة رئيسية بسيطة"""
+    return jsonify({
+        "status": "running",
+        "message": "Land Checker is active. Use /scan to start manual check.",
+        "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    })
+
+
+@app.route('/scan')
+def scan():
+    """يفحص المشاريع عند الطلب"""
+    results = check_land_projects()
+    return jsonify({
+        "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "results": results
+    })
+
+
 if __name__ == "__main__":
-    write_log("🚀 بدأ الفحص التلقائي للمخططات...")
-    while True:
-        check_sakani()
-        time.sleep(30)
+    app.run(host='0.0.0.0', port=10000)
