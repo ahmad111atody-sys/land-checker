@@ -1,38 +1,32 @@
 import requests
 from bs4 import BeautifulSoup
-import json
 from datetime import datetime
 
-def check_land_project(url):
-    headers = {
-        "User-Agent": "Mozilla/5.0"
-    }
-    response = requests.get(url, headers=headers)
-    response.encoding = "utf-8"
-    
+def check_land(url):
+    print("🔍 جاري فحص المخطط...")
+    response = requests.get(url)
+    response.raise_for_status()
+
     soup = BeautifulSoup(response.text, "html.parser")
-    links = []
 
-    # نبحث عن أي عنصر يحتوي على كلمة "ملغاة" أو "Canceled"
-    for a in soup.find_all("a", href=True):
-        if "ملغاة" in a.text or "Canceled" in a.text:
-            full_link = "https://sakani.sa" + a["href"] if a["href"].startswith("/") else a["href"]
-            links.append(full_link)
+    # نبحث عن القطع الملغاة أو المحجوزة حسب الكلمات في الصفحة
+    canceled = soup.find_all(string=lambda text: text and ("ملغاة" in text or "Cancel" in text))
 
-    status = "🔴 يوجد قطع ملغاة" if links else "🟢 لا توجد قطع ملغاة"
-    
-    result = {
-        "checked_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        "project_url": url,
-        "status": status,
-        "links": links
-    }
-    
-    return result
+    if canceled:
+        print("⚠️ تم العثور على قطع ملغاة!")
+        print(f"📍 رابط المخطط: {url}")
+        print(f"⏰ وقت الفحص: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        print("-" * 50)
+    else:
+        print("✅ لا توجد قطع ملغاة حالياً.")
 
-
-# ========== تنفيذ مباشر ==========
 if __name__ == "__main__":
-    url = input("ضع رابط المخطط من سكني هنا: ").strip()
-    data = check_land_project(url)
-    print(json.dumps(data, ensure_ascii=False, indent=2))
+    # ضيف هنا أي رابط تبي يفحصه
+    urls = [
+        "https://sakani.sa/app/land-projects/146",  # واحة البستان - صبيا
+        "https://sakani.sa/app/land-projects/602",  # نخلان
+    ]
+
+    for link in urls:
+        print(f"\n➡️ فحص الرابط: {link}")
+        check_land(link)
