@@ -1,102 +1,107 @@
-# app.py
 import os
 import time
+import json
 import threading
 import requests
 from bs4 import BeautifulSoup
-from flask import Flask
+from flask import Flask, jsonify
 
-# ===== Telegram config =====
-BOT_TOKEN = "8497253482:AAHWWYNrUJRotdwCe0xKZ50-dvgHiwoKgeg"   # ضع توكنك هنا
-CHAT_ID = "1244229957"  # رقم الـ chat_id
+# إعداد التوكن ومعرف المحادثة
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+CHAT_ID = os.getenv("CHAT_ID")
+CHECK_INTERVAL = int(os.getenv("CHECK_INTERVAL", "60"))  # كل 60 ثانية افتراضيًا
 
-# ===== Projects / units =====
-alobstan_links = [
-    "https://sakani.sa/app/units/765316",
-    "https://sakani.sa/app/units/765453",
-    "https://sakani.sa/app/units/765499",
-    "https://sakani.sa/app/units/765587",
-    "https://sakani.sa/app/units/765778",
-    "https://sakani.sa/app/units/765515",
-    "https://sakani.sa/app/units/765648",
-    "https://sakani.sa/app/units/765595",
-    "https://sakani.sa/app/units/765598",
-    "https://sakani.sa/app/units/765205"
-]
+if not BOT_TOKEN or not CHAT_ID:
+    raise Exception("❌ لازم تضيف BOT_TOKEN و CHAT_ID في الإعدادات.")
 
-nakhlan_links = [
-    "https://sakani.sa/app/units/797389",
-    "https://sakani.sa/app/units/797400",
-    "https://sakani.sa/app/units/797412",
-    "https://sakani.sa/app/units/797436",
-    "https://sakani.sa/app/units/797460",
-    "https://sakani.sa/app/units/797473",
-    "https://sakani.sa/app/units/797482",
-    "https://sakani.sa/app/units/797490",
-    "https://sakani.sa/app/units/797498"
-]
+# روابط المشاريع
+PROJECTS = {
+    "نخلان": "https://sakani.sa/app/land-projects/602",
+    "واحة البستان": "https://sakani.sa/app/land-projects/146"
+}
 
-ALL_LINKS = alobstan_links + nakhlan_links
+# حفظ القطع التي تم إرسالها مسبقًا
+SENT_FILE = "sent_cancelled.json"
 
-# ===== helper functions =====
-def send_telegram(msg):
+def load_sent():
+    try:
+        with open(SENT_FILE, "r", encoding="utf-8") as f:
+            return set(json.load(f))
+    except:
+        return set()
+
+def save_sent(sent):
+    with open(SENT_FILE, "w", encoding="utf-8") as f:
+        json.dump(list(sent), f, ensure_ascii=False, indent=2)
+
+def send_message(text):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
     try:
-        requests.get(url, params={"chat_id": CHAT_ID, "text": msg}, timeout=10)
+        requests.post(url, data={"chat_id": CHAT_ID, "text": text})
     except Exception as e:
-        print("Telegram error:", e)
+        print("خطأ في الإرسال:", e)
 
-def check_unit(url):
+HEADERS = {"User-Agent": "Mozilla/5.0"}
+
+def extract_unit_number(url):
     try:
-        r = requests.get(url, timeout=15)
-        if r.status_code != 200:
-            return None
-        text = r.text.lower()
-        # قواعد بسيطة: تكتشف عبارة متاحة أو وجود نص يدل الحجز متاح
-        if ("احجز الآن" in text) or ("متاحة" in text) or ("available" in text):
-            return url
-        # لو تبي تكتشف الملغاة:
-        if ("ملغاة" in text) or ("cancel" in text):
-            return f"CANCELLED:{url}"
+        return url.split("/")[-1]
+    except:
+        return "غير معروف"
+
+def get_units(project_url):
+    try:
+        r = requests.get(project_url, headers=HEADERS, timeout=20)
+        r.raise_for_status()
+        soup = BeautifulSoup(r.text, "html.parser")
+
+        links = []
+        for a in soup.find_all("a", href=True):
+            href = a["href"]
+            if "/app/units/" in href:
+                links.append("https://sakani.sa" + href)
+        return list(set(links))
     except Exception as e:
-        print("fetch error:", e)
-    return None
+        print("❌ خطأ في قراءة المشروع:", e)
+        return []
 
-def worker_loop(interval_seconds=30):
-    sent = set()    # روابط ارسلتها مسبقًا حتى لا تكرر
+def check_if_cancelled(unit_url):
+    try:
+        r = requests.get(unit_url, headers=HEADERS, timeout=15)
+        if r.status_code != 200:
+            return False
+        text = r.text.lower()
+        return ("cancel" in text or "ملغاة" in text)
+    except:
+        return False
+
+def monitor():
+    sent = load_sent()
+    print("✅ بدأ فحص القطع الملغاة...")
     while True:
-        for link in ALL_LINKS:
-            res = check_unit(link)
-            if res:
-                if res.startswith("CANCELLED:"):
-                    unit_link = res.split("CANCELLED:")[1]
-                    # لو مرّة قبل ما بعت، لا تكرر
-                    if ("CANCEL:"+unit_link) not in sent:
-                        msg = f"⚠️ قطعة ملغاة: {unit_link}"
-                        send_telegram(msg)
-                        print("sent cancel:", unit_link)
-                        sent.add("CANCEL:"+unit_link)
-                else:
-                    if res not in sent:
-                        msg = f"✅ قطعة متاحة: {res}"
-                        send_telegram(msg)
-                        print("sent available:", res)
-                        sent.add(res)
-        time.sleep(interval_seconds)
+        for name, url in PROJECTS.items():
+            print(f"🔍 فحص مشروع {name} ...")
+            units = get_units(url)
+            for unit_url in units:
+                if unit_url in sent:
+                    continue
+                if check_if_cancelled(unit_url):
+                    unit_number = extract_unit_number(unit_url)
+                    msg = f"⚠️ قطعة ملغاة في مشروع {name}\nرقم القطعة: {unit_number}\n{unit_url}"
+                    send_message(msg)
+                    sent.add(unit_url)
+                    save_sent(sent)
+                    print("🚀 إشعار أُرسل:", msg)
+        time.sleep(CHECK_INTERVAL)
 
-# ===== Flask app (لاعطاء Render بورت للاستماع - يسمح بالـ free instance) =====
 app = Flask(__name__)
 
 @app.route("/")
 def home():
-    return "Land checker running."
+    return jsonify({"status": "bot running", "projects": list(PROJECTS.keys())})
 
-# عند تشغيل الموديل: شغّل الخيط الخلفي وبرمج الـ Flask ليستمع على PORT
 if __name__ == "__main__":
-    # شغّل الخيط الخلفي
-    t = threading.Thread(target=worker_loop, args=(30,), daemon=True)
+    t = threading.Thread(target=monitor, daemon=True)
     t.start()
-
-    # احصل البورت من env (Render يضع PORT تلقائياً)
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
