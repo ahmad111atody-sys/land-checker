@@ -2,14 +2,22 @@ import requests
 from bs4 import BeautifulSoup
 from datetime import datetime
 
+headers = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                  "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+}
+
 def check_land(url):
     print("🔍 جاري فحص المخطط...")
-    response = requests.get(url)
-    response.raise_for_status()
+    response = requests.get(url, headers=headers)
+    
+    if response.status_code == 403:
+        print(f"🚫 الموقع رفض الاتصال (403 Forbidden) - {url}")
+        return
 
+    response.raise_for_status()
     soup = BeautifulSoup(response.text, "html.parser")
 
-    # نبحث عن القطع الملغاة أو المحجوزة حسب الكلمات في الصفحة
     canceled = soup.find_all(string=lambda text: text and ("ملغاة" in text or "Cancel" in text))
 
     if canceled:
@@ -21,7 +29,6 @@ def check_land(url):
         print("✅ لا توجد قطع ملغاة حالياً.")
 
 if __name__ == "__main__":
-    # ضيف هنا أي رابط تبي يفحصه
     urls = [
         "https://sakani.sa/app/land-projects/146",  # واحة البستان - صبيا
         "https://sakani.sa/app/land-projects/602",  # نخلان
