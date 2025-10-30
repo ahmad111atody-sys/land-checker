@@ -5,7 +5,7 @@ import requests
 
 app = Flask(__name__)
 
-# روابط المخططات اللي نتابعها
+# روابط المخططات
 PROJECTS = {
     "واحة البستان – صبيا": "https://sakani.sa/app/land-projects/146",
     "نخلان": "https://sakani.sa/app/land-projects/602"
@@ -19,19 +19,18 @@ def check_sakani():
                 print(f"📍 فحص المخطط: {name}")
                 response = requests.get(url, timeout=15)
 
-                # التحقق من وجود قطع ملغاة
                 if "Cancel" in response.text or "ملغاة" in response.text:
                     print(f"🚨 تم العثور على قطع ملغاة في {name}!")
                 else:
                     print(f"✅ لا توجد قطع ملغاة حالياً في {name}.")
-                    
-                time.sleep(5)  # تأخير بسيط بين الفحوصات لتجنب الضغط على الموقع
+
+                time.sleep(5)
 
         except Exception as e:
             print(f"⚠️ خطأ أثناء الفحص: {e}")
 
         print("⏳ سيتم إعادة الفحص بعد 30 ثانية...\n")
-        time.sleep(30)  # الفحص كل 30 ثانية
+        time.sleep(30)
 
 # تشغيل الفحص في الخلفية
 threading.Thread(target=check_sakani, daemon=True).start()
