@@ -1,39 +1,45 @@
 import requests
-from bs4 import BeautifulSoup
-from datetime import datetime
+import time
+import random
 
-headers = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-                  "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-}
+# روابط المخططات
+links = [
+    "https://sakani.sa/app/land-projects/146",  # واحة البستان – صبيا
+    "https://sakani.sa/app/land-projects/602",  # مثال: نخلان
+]
 
-def check_land(url):
-    print("🔍 جاري فحص المخطط...")
-    response = requests.get(url, headers=headers)
-    
-    if response.status_code == 403:
-        print(f"🚫 الموقع رفض الاتصال (403 Forbidden) - {url}")
-        return
+# إعدادات البروكسي (مجاني)
+PROXIES = [
+    "http://51.158.154.173:3128",
+    "http://51.250.80.131:80",
+    "http://8.213.129.15:8080",
+]
 
-    response.raise_for_status()
-    soup = BeautifulSoup(response.text, "html.parser")
+# دالة لفحص المخطط
+def check_land(link):
+    proxy = {"http": random.choice(PROXIES), "https": random.choice(PROXIES)}
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    }
 
-    canceled = soup.find_all(string=lambda text: text and ("ملغاة" in text or "Cancel" in text))
+    try:
+        print(f"🔍 فحص الرابط: {link}")
+        response = requests.get(link, headers=headers, proxies=proxy, timeout=10)
+        if response.status_code == 200:
+            if "ملغاة" in response.text or "cancel" in response.text.lower():
+                print(f"⚠️ تم العثور على قطعة ملغاة في {link}")
+            else:
+                print(f"✅ لا يوجد قطع ملغاة في {link}")
+        else:
+            print(f"🚫 فشل الفحص ({response.status_code}) - {link}")
 
-    if canceled:
-        print("⚠️ تم العثور على قطع ملغاة!")
-        print(f"📍 رابط المخطط: {url}")
-        print(f"⏰ وقت الفحص: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-        print("-" * 50)
-    else:
-        print("✅ لا توجد قطع ملغاة حالياً.")
+    except requests.exceptions.RequestException as e:
+        print(f"❌ خطأ في الاتصال بـ {link}: {e}")
 
-if __name__ == "__main__":
-    urls = [
-        "https://sakani.sa/app/land-projects/146",  # واحة البستان - صبيا
-        "https://sakani.sa/app/land-projects/602",  # نخلان
-    ]
-
-    for link in urls:
-        print(f"\n➡️ فحص الرابط: {link}")
+# تشغيل الفحص الدوري
+while True:
+    for link in links:
         check_land(link)
+    print("⏳ سيتم إعادة الفحص بعد 30 دقيقة...")
+    time.sleep(1800)
