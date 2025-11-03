@@ -1,45 +1,59 @@
-import requests
 import time
-import random
+import schedule
+import requests
+from bs4 import BeautifulSoup
+from flask import Flask
 
-# روابط المخططات
-links = [
-    "https://sakani.sa/app/land-projects/146",  # واحة البستان – صبيا
-    "https://sakani.sa/app/land-projects/602",  # مثال: نخلان
-]
+app = Flask(__name__)
 
-# إعدادات البروكسي (مجاني)
-PROXIES = [
-    "http://51.158.154.173:3128",
-    "http://51.250.80.131:80",
-    "http://8.213.129.15:8080",
-]
+# رابط المخطط
+PROJECT_URL = "https://sakani.sa/app/land-projects/602"
+CHECK_INTERVAL = 300  # 5 دقائق
 
-# دالة لفحص المخطط
-def check_land(link):
-    proxy = {"http": random.choice(PROXIES), "https": random.choice(PROXIES)}
+# كلمات تدل على توفر وحدة
+AVAILABLE_KEYWORDS = ["متاح", "حجز", "متوفر", "الآن", "قطعة", "وحدة"]
+
+def check_sakani():
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
     }
-
     try:
-        print(f"🔍 فحص الرابط: {link}")
-        response = requests.get(link, headers=headers, proxies=proxy, timeout=10)
-        if response.status_code == 200:
-            if "ملغاة" in response.text or "cancel" in response.text.lower():
-                print(f"⚠️ تم العثور على قطعة ملغاة في {link}")
-            else:
-                print(f"✅ لا يوجد قطع ملغاة في {link}")
+        response = requests.get(PROJECT_URL, headers=headers, timeout=10)
+        if response.status_code != 200:
+            print(f"الصفحة غير متاحة: {response.status_code}")
+            return
+
+        soup = BeautifulSoup(response.text, 'html.parser')
+        text = soup.get_text()
+
+        if any(keyword in text for keyword in AVAILABLE_KEYWORDS):
+            print("وحدة جديدة متاحة في روضة نخلان!")
+            print(f"الرابط: {PROJECT_URL}")
+            print(f"الوقت: {time.strftime('%Y-%m-%d %H:%M:%S')}")
         else:
-            print(f"🚫 فشل الفحص ({response.status_code}) - {link}")
+            print("لا توجد وحدات متاحة حاليًا.")
 
-    except requests.exceptions.RequestException as e:
-        print(f"❌ خطأ في الاتصال بـ {link}: {e}")
+    except Exception as e:
+        print(f"خطأ: {e}")
 
-# تشغيل الفحص الدوري
-while True:
-    for link in links:
-        check_land(link)
-    print("⏳ سيتم إعادة الفحص بعد 30 دقيقة...")
-    time.sleep(1800)
+# فحص عند بدء التشغيل
+check_sakani()
+
+# جدولة كل 5 دقائق
+schedule.every(CHECK_INTERVAL).seconds.do(check_sakani)
+
+@app.route('/')
+def home():
+    return "مراقب مخطط روضة نخلان يعمل... تحقق من الـ Logs!"
+
+# تشغيل الجدولة في الخلفية
+def run_scheduler():
+    while True:
+        schedule.run_pending()
+        time.sleep(1)
+
+if __name__ == '__main__':
+    from threading import Thread
+    # تشغيل الجدولة في خيط منفصل
+    Thread(target=run_scheduler, daemon=True).start()
+    app.run(host='0.0.0.0', port=10000)
